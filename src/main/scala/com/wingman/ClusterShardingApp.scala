@@ -26,6 +26,20 @@ object ClusterShardingApp extends App {
   )
 
   val region = ClusterSharding(system).shardRegion("RedisPersistentActor")
+
+  // Update the state
   region ! ("user123", UpdateState("Hello, Akka Persistence with Redis!"))
+
+  // Get the state
   region ! ("user123", GetState)
+
+  // Save a snapshot
+  region ! ("user123", SaveSnapshot)
+
+  // Reset the state
+  region ! ("user123", ResetState)
+
+  // Delete snapshots (custom logic)
+  region ! ("user123", DeleteSnapshots("custom_criteria"))
+
 }

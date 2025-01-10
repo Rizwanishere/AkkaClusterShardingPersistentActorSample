@@ -5,6 +5,7 @@ version := "1.0"
 scalaVersion := "2.13.12"
 
 libraryDependencies ++= Seq(
+  "com.typesafe.akka" %% "akka-serialization-jackson" % "2.6.20",
   "com.typesafe.akka" %% "akka-actor" % "2.6.20",
   "com.typesafe.akka" %% "akka-cluster" % "2.6.20",
   "com.typesafe.akka" %% "akka-cluster-sharding" % "2.6.20",
