@@ -1,23 +1,23 @@
 package com.wingman
 
-import akka.actor.{Actor, ActorLogging, PoisonPill, Timers}
-import redis.clients.jedis.Jedis
+import akka.actor.{Actor, ActorLogging, Timers}
 import scala.concurrent.duration._
 
 case class GenericMapRequest(fields: Map[String, String])
-case class SaveState(shardKey: String, shardValue: String, state: String)
-case class RetrieveState(shardKey: String, shardValue: String)
 //case object SaveSnapshot
-case object StopActor
 
 class ShardedEntityActor extends Actor with ActorLogging with Timers {
   private var state: String = ""
-  private var shardKey: Option[String] = None
-  private var shardValue: Option[String] = None
+  private var currentShardKey: Option[String] = None
+  private var currentShardValue: Option[String] = None
 
-  // Redis key structure: shard:<shardKey>:<shardValue>
-  private def redisKey: String =
-    shardKey.zip(shardValue).map { case (key, value) => s"$key:$value" }.getOrElse("")
+  // Redis key structure: shardKey:shardValue
+  private def redisKey: String = {
+    (currentShardKey, currentShardValue) match {
+      case (Some(key), Some(value)) => s"$key:$value"
+      case _ => ""
+    }
+  }
 
   // Schedule periodic snapshot saving every minute
   timers.startTimerWithFixedDelay("SaveSnapshotTimer", SaveSnapshot, 1.minute)
@@ -27,23 +27,20 @@ class ShardedEntityActor extends Actor with ActorLogging with Timers {
   }
 
   override def postStop(): Unit = {
-    // Persist state to Redis before shutdown
-    if (shardKey.isDefined && shardValue.isDefined) {
-      RedisClient.saveState(redisKey, state)
-      log.info(s"Persisted final state for [$redisKey]: $state")
-    }
+    saveStateToRedis()
+    log.info(s"Persisted final state for [$redisKey]: $state before stopping.")
   }
 
   override def receive: Receive = {
     case GenericMapRequest(fields) =>
-      shardKey = fields.get("shardKey")
-      shardValue = fields.get("shardValue")
+      val shardKey = fields.get("shardKey")
+      val shardValue = fields.get("shardValue")
+
       if (shardKey.isEmpty || shardValue.isEmpty) {
         log.warning("Invalid request: shardKey or shardValue missing.")
         sender() ! "Error: shardKey and shardValue are required."
       } else {
-        // Load state from Redis if not already loaded
-        loadStateIfNecessary()
+        switchContext(shardKey.get, shardValue.get) // Ensure state isolation
         val operation = fields.getOrElse("operation", "unknown").toLowerCase
         operation match {
           case "update" =>
@@ -64,54 +61,60 @@ class ShardedEntityActor extends Actor with ActorLogging with Timers {
       }
 
     case SaveSnapshot =>
-      saveSnapshot()
+      saveStateToRedis()
       log.info(s"Snapshot saved for [$redisKey].")
-
-    case RetrieveState(shardKeyReq, shardValueReq) =>
-      if (shardKey.contains(shardKeyReq) && shardValue.contains(shardValueReq)) {
-        sender() ! s"State for [$redisKey]: $state"
-      } else {
-        sender() ! s"Error: Requested state for [$shardKeyReq:$shardValueReq] not found."
-      }
-
-    case SaveState(shardKeyReq, shardValueReq, newState) =>
-      if (shardKey.contains(shardKeyReq) && shardValue.contains(shardValueReq)) {
-        updateState(newState)
-        sender() ! s"State saved for [$redisKey]: $state"
-      } else {
-        sender() ! s"Error: Mismatched shardKey/shardValue [$shardKeyReq:$shardValueReq]."
-      }
-
-    case StopActor =>
-      context.stop(self)
-
-    case other =>
-      log.warning(s"Unhandled message: $other")
   }
 
-  private def loadStateIfNecessary(): Unit = {
-    if (shardKey.isDefined && shardValue.isDefined && state.isEmpty) {
-      RedisClient.getState(redisKey) match {
-        case Some(savedState) =>
-          state = savedState
-          log.info(s"Restored state for [$redisKey]: $state")
-        case None =>
-          log.info(s"No state found for [$redisKey], initializing with empty state.")
-      }
+  /**
+   * Switches the actor context to a new shardKey and shardValue, loading state from Redis if necessary.
+   */
+  private def switchContext(shardKey: String, shardValue: String): Unit = {
+    if (currentShardKey != Some(shardKey) || currentShardValue != Some(shardValue)) {
+      saveStateToRedis() // Save current state before switching context
+      currentShardKey = Some(shardKey)
+      currentShardValue = Some(shardValue)
+      loadStateFromRedis() // Load new state
     }
   }
 
-  private def updateState(newState: String): Unit = {
-    state = state + newState // Appending for simplicity; customize as needed
-    RedisClient.saveState(redisKey, state)
+  /**
+   * Saves the current state to Redis.
+   */
+  private def saveStateToRedis(): Unit = {
+    if (redisKey.nonEmpty) {
+      RedisClient.saveState(redisKey, state)
+      log.info(s"Persisted state for [$redisKey]: $state")
+    }
   }
 
+  /**
+   * Loads the current state from Redis.
+   */
+  private def loadStateFromRedis(): Unit = {
+    val redisState = RedisClient.getState(redisKey)
+    redisState match {
+      case Some(value) =>
+        state = value
+        log.info(s"Restored state for [$redisKey]: $state")
+      case None =>
+        log.info(s"No state found for [$redisKey], initializing with empty state.")
+        state = "" // This happens only if the key is not found in Redis.
+    }
+  }
+
+  /**
+   * Updates the actor state and saves it to Redis.
+   */
+  private def updateState(newState: String): Unit = {
+    state = newState // Replace existing state (change logic if appending is required)
+    saveStateToRedis()
+  }
+
+  /**
+   * Resets the actor state to an empty string and saves it to Redis.
+   */
   private def resetState(): Unit = {
     state = ""
-    RedisClient.saveState(redisKey, state)
-  }
-
-  private def saveSnapshot(): Unit = {
-    RedisClient.saveState(s"$redisKey:snapshot", state)
+    saveStateToRedis()
   }
 }

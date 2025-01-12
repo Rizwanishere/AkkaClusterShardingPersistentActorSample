@@ -28,12 +28,10 @@ object ClusterShardingSetup {
 
     // Step 5: Send test messages
     val testMessages = List(
-//      GenericMapRequest(Map(SHARDKEY -> USERID, SHARDVALUE -> "user123")),
-//      GenericMapRequest(Map(SHARDKEY -> "order", SHARDVALUE -> "order456")),
-//      GenericMapRequest(Map(SHARDKEY -> USERID, SHARDVALUE -> "user789"))
-
-      GenericMapRequest(Map("shardKey" -> "Sohaib", "shardValue" -> "Samad", "operation" -> "update", "value" -> "Bye")),
+      GenericMapRequest(Map("shardKey" -> "Sohaib", "shardValue" -> "Samad", "operation" -> "update", "value" -> "HelloSohaib")),
+      GenericMapRequest(Map("shardKey" -> "userId", "shardValue" -> "user123", "operation" -> "update", "value" -> "ByeFromUser123")),
       GenericMapRequest(Map("shardKey" -> "userId", "shardValue" -> "user123", "operation" -> "get")),
+      GenericMapRequest(Map("shardKey" -> "Sohaib", "shardValue" -> "Samad", "operation" -> "get")),
       GenericMapRequest(Map("shardKey" -> "userId", "shardValue" -> "user123", "operation" -> "reset"))
     )
 
