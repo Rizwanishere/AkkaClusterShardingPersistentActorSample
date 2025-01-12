@@ -128,3 +128,84 @@ Cluster Sharding distributes entities (actors) across nodes, while Persistent Ac
 - **Cluster Sharding**: Manages the lifecycle and distribution of stateful entities across the cluster.
 - **Persistent Actors**: Manage the durability and recovery of an entity’s state.
 - Together, they provide a highly scalable and fault-tolerant architecture for building distributed, stateful systems.
+
+<br>
+
+---
+
+---
+
+<br>
+
+# Akka Cluster Sharding with Redis Persistence
+
+## Overview
+This project demonstrates the use of **Akka Cluster Sharding** for managing distributed stateful actors. Each actor represents an entity within a shard, and its state is persisted in **Redis**. The architecture ensures scalability, fault-tolerance, and state isolation for distributed systems.
+
+---
+
+## Key Components
+
+### 1. **ClusterShardingSetup**
+The entry point for initializing Akka Cluster Sharding.
+
+- **Actor System**: Creates the `ShardClusterSystem`.
+- **Shard Extractors**:
+   - **Entity ID**: Maps messages to entity IDs based on `shardKey` and `shardValue`.
+   - **Shard ID**: Consistently maps entity IDs to shard IDs using hashing.
+- **Shard Region**: Starts the shard region for `ShardedEntityActor`.
+- **Test Messages**: Sends sample `GenericMapRequest` messages to the shard region.
+
+---
+
+### 2. **ShardedEntityActor**
+A stateful actor that processes operations on a per-entity basis.
+
+- **State Management**:
+   - Maintains the current state (`state`) and shard-specific keys (`shardKey`, `shardValue`).
+   - Persists state to Redis using a key format: `shardKey:shardValue`.
+
+- **Operations**:
+   - **`update`**: Updates the actor state.
+   - **`get`**: Retrieves the current state.
+   - **`reset`**: Clears the state.
+
+- **Persistence**:
+   - Saves state to Redis using `RedisClient`.
+   - Periodically saves snapshots to ensure fault-tolerance.
+
+- **Context Switching**:
+   - Saves the current state to Redis and loads the new state when switching context.
+
+---
+
+### 3. **RedisClient**
+A utility for managing Redis operations.
+
+- **Functions**:
+   - `saveState`: Persists an actor's state to Redis.
+   - `getState`: Retrieves an actor's state from Redis.
+
+- **Connection Pool**:
+   - Uses `JedisPool` for efficient connection management.
+   - Ensures proper resource cleanup.
+
+---
+
+## Running the Application
+
+### Prerequisites
+1. **Redis**:
+   - Ensure Redis is installed and running on `127.0.0.1:6379`.
+2. **Akka**:
+   - Akka dependencies must be included in the project.
+3. **Jedis**:
+   - Include the Jedis library for Redis connectivity.
+
+### Steps
+1. Clone the repository.
+2. Run `ClusterShardingSetup` to initialize the shard cluster.
+3. Observe the logs to verify operations.
+
+---
+
